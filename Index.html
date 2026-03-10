@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEURØ · AI Music</title>
+  <meta name="description" content="NEURØ — Plataforma de música creada con inteligencia artificial." />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #050508; color: #fff; font-family: 'Share Tech Mono', monospace; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: rgba(0,255,200,0.3); border-radius: 3px; }
+    .track-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); transition: all 0.25s; cursor: pointer; }
+    .track-card:hover { border-color: rgba(0,255,200,0.3); background: rgba(0,255,200,0.04); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+    .btn-neon { background: transparent; border: 1px solid #00ffc8; color: #00ffc8; padding: 10px 24px; cursor: pointer; font-family: 'Orbitron', monospace; font-size: 11px; letter-spacing: 2px; transition: all 0.2s; text-transform: uppercase; width: 100%; }
+    .btn-neon:hover { background: rgba(0,255,200,0.1); box-shadow: 0 0 15px rgba(0,255,200,0.3); }
+    .btn-solid { background: linear-gradient(135deg, #00ffc8, #0080ff); border: none; color: #000; padding: 10px 24px; cursor: pointer; font-family: 'Orbitron', monospace; font-size: 11px; letter-spacing: 2px; font-weight: 700; transition: all 0.2s; text-transform: uppercase; width: 100%; }
+    .btn-solid:hover { opacity: 0.85; box-shadow: 0 0 25px rgba(0,255,200,0.4); }
+    .btn-google { background: #fff; border: none; color: #333; padding: 10px 24px; cursor: pointer; font-family: 'Orbitron', monospace; font-size: 11px; letter-spacing: 2px; font-weight: 700; transition: all 0.2s; text-transform: uppercase; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .btn-google:hover { opacity: 0.9; box-shadow: 0 0 20px rgba(255,255,255,0.2); }
+    .input-neon { background: rgba(0,255,200,0.03); border: 1px solid rgba(0,255,200,0.2); color: #fff; padding: 11px 14px; font-family: 'Share Tech Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.2s; width: 100%; }
+    .input-neon:focus { border-color: #00ffc8; box-shadow: 0 0 8px rgba(0,255,200,0.15); }
+    .input-neon::placeholder { color: rgba(255,255,255,0.2); }
+    select.input-neon option { background: #0a0a12; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; padding: 12px 20px; transition: all 0.2s; border: none; background: none; color: inherit; font-family: 'Share Tech Mono', monospace; border-bottom: 2px solid transparent; }
+    .genre-pill { padding: 6px 16px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: rgba(255,255,255,0.5); cursor: pointer; font-family: 'Share Tech Mono', monospace; font-size: 12px; transition: all 0.2s; white-space: nowrap; }
+    .genre-pill.active, .genre-pill:hover { border-color: #00ffc8; color: #00ffc8; background: rgba(0,255,200,0.08); }
+    .neon-border { border: 1px solid rgba(0,255,200,0.3); box-shadow: 0 0 20px rgba(0,255,200,0.1), inset 0 0 20px rgba(0,255,200,0.05); }
+    .error-msg { color: #ff4466; font-size: 12px; text-align: center; padding: 8px; background: rgba(255,68,102,0.1); border: 1px solid rgba(255,68,102,0.3); }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    @keyframes grid-move { from { transform:translateY(0); } to { transform:translateY(40px); } }
+    @keyframes pulse-ring { 0%,100% { opacity:0.3; transform:scale(1); } 50% { opacity:0.6; transform:scale(1.05); } }
+    @keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-10px); } }
+    @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+    .track-item { animation: fadeUp 0.4s ease forwards; }
+    .loading { display: flex; align-items: center; justify-content: center; height: 100vh; background: #050508; }
+    .spinner { width: 40px; height: 40px; border: 2px solid rgba(0,255,200,0.2); border-top-color: #00ffc8; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  </style>
+</head>
+<body>
+<div id="root"><div class="loading"><div class="spinner"></div></div></div>
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, increment, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAHBetL12-jRB21BTjkeufPYzhpeg-6K9w",
+    authDomain: "neuro-ai-music.firebaseapp.com",
+    projectId: "neuro-ai-music",
+    storageBucket: "neuro-ai-music.firebasestorage.app",
+    messagingSenderId: "472873480624",
+    appId: "1:472873480624:web:53b452a2cedba4021be675",
+    measurementId: "G-67DZH76F7K"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const googleProvider = new GoogleAuthProvider();
+
+  const GENRES = ["All","Synthwave","Techno","Ambient","Lo-fi","Experimental","Chill"];
+  const AI_TOOLS = ["Suno v4","Udio","Stable Audio","MusicGen","AudioCraft","Otro"];
+  const EMOJI_COVERS = ["🎵","🌆","⚡","🌌","🎧","🔮","🌠","🎸","🌊","🔥","💫","🎹"];
+
+  function fmt(s) { return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,"0")}`; }
+  function fnum(n) { return n>=1000?(n/1000).toFixed(1)+"k":String(n||0); }
+
+  // ── STATE ──
+  let audio = new Audio();
+  audio.addEventListener('timeupdate', () => {
+    if (audio.duration) setState({ progress: (audio.currentTime / audio.duration) * 100 });
+  });
+  audio.addEventListener('ended', () => setState({ isPlaying: false, progress: 0 }));
+
+  let state = {
+    user: null, authLoading: true, view: "feed",
+    tracks: [], tracksLoading: true,
+    currentTrack: null, isPlaying: false, progress: 0,
+    likedTracks: new Set(), searchQuery: "", activeGenre: "All",
+    uploadModal: false, uploadStep: 1,
+    uploadForm: { title:"", genre:"", aiModel:"", tags:"", cover:"🎵", audioUrl:"" },
+    loginView: "login", loginEmail:"", loginPassword:"", loginName:"",
+    loginError:"", loginLoading: false,
+    notification: null
+  };
+
+  function setState(partial) {
+    state = { ...state, ...partial };
+    render();
+  }
+
+  function showNotif(msg) {
+    setState({ notification: msg });
+    setTimeout(() => setState({ notification: null }), 2500);
+  }
+
+  // ── FIREBASE AUTH ──
+  onAuthStateChanged(auth, user => {
+    setState({ user, authLoading: false });
+  });
+
+  async function loginEmail() {
+    if (!state.loginEmail || !state.loginPassword) { setState({ loginError: "Completa todos los campos" }); return; }
+    setState({ loginLoading: true, loginError: "" });
+    try {
+      await signInWithEmailAndPassword(auth, state.loginEmail, state.loginPassword);
+    } catch(e) {
+      setState({ loginError: "Email o contraseña incorrectos", loginLoading: false });
+    }
+  }
+
+  async function registerEmail() {
+    if (!state.loginEmail || !state.loginPassword || !state.loginName) { setState({ loginError: "Completa todos los campos" }); return; }
+    setState({ loginLoading: true, loginError: "" });
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, state.loginEmail, state.loginPassword);
+      await updateProfile(cred.user, { displayName: state.loginName });
+      setState({ user: { ...cred.user, displayName: state.loginName } });
+    } catch(e) {
+      let msg = "Error al crear cuenta";
+      if (e.code === "auth/email-already-in-use") msg = "Este email ya está registrado";
+      if (e.code === "auth/weak-password") msg = "La contraseña debe tener al menos 6 caracteres";
+      setState({ loginError: msg, loginLoading: false });
+    }
+  }
+
+  async function loginGoogle() {
+    setState({ loginLoading: true, loginError: "" });
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch(e) {
+      setState({ loginError: "Error al iniciar con Google", loginLoading: false });
+    }
+  }
+
+  async function logout() {
+    await signOut(auth);
+    setState({ view: "feed" });
+  }
+
+  // ── FIRESTORE TRACKS ──
+  function loadTracks() {
+    const q = query(collection(db, "tracks"), orderBy("createdAt", "desc"));
+    onSnapshot(q, snap => {
+      const tracks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setState({ tracks, tracksLoading: false });
+    });
+  }
+
+  async function uploadTrack() {
+    if (!state.uploadForm.title || !state.uploadForm.genre) { showNotif("Completa los campos requeridos"); return; }
+    try {
+      await addDoc(collection(db, "tracks"), {
+        title: state.uploadForm.title,
+        artistName: state.user?.displayName || "Usuario",
+        artistId: state.user?.uid,
+        genre: state.uploadForm.genre,
+        aiModel: state.uploadForm.aiModel || "Otro",
+        tags: state.uploadForm.tags.split(",").map(t=>t.trim()).filter(Boolean),
+        cover: state.uploadForm.cover,
+        audioUrl: state.uploadForm.audioUrl || "",
+        plays: 0, likes: 0,
+        duration: 0,
+        waveform: Array.from({length:30},()=>+(Math.random()*0.8+0.2).toFixed(2)),
+        createdAt: serverTimestamp()
+      });
+      setState({ uploadModal:false, uploadStep:1, uploadForm:{title:"",genre:"",aiModel:"",tags:"",cover:"🎵",audioUrl:""} });
+      showNotif("¡Track publicado! 🎉");
+      setState({ view: "feed" });
+    } catch(e) {
+      showNotif("Error al publicar. Intenta de nuevo.");
+    }
+  }
+
+  async function likeTrack(trackId) {
+    if (!state.user) { showNotif("Inicia sesión para dar like ❤️"); return; }
+    const liked = new Set(state.likedTracks);
+    if (liked.has(trackId)) {
+      liked.delete(trackId);
+      await updateDoc(doc(db, "tracks", trackId), { likes: increment(-1) });
+    } else {
+      liked.add(trackId);
+      await updateDoc(doc(db, "tracks", trackId), { likes: increment(1) });
+    }
+    setState({ likedTracks: liked });
+  }
+
+  // ── AUDIO ──
+  const audio = new Audio();
+  audio.crossOrigin = "anonymous";
+  audio.addEventListener('timeupdate', () => {
+    if (audio.duration) setState({ progress: (audio.currentTime / audio.duration) * 100 });
+  });
+  audio.addEventListener('ended', () => setState({ isPlaying: false, progress: 0 }));
+  audio.addEventListener('error', () => showNotif("No se pudo cargar el audio ❌"));
+
+  // ── PLAYER ──
+  function playTrack(track) {
+    if (state.currentTrack?.id === track.id) {
+      if (state.isPlaying) { audio.pause(); setState({ isPlaying: false }); }
+      else { audio.play().catch(()=>{}); setState({ isPlaying: true }); }
+    } else {
+      audio.pause();
+      setState({ currentTrack: track, progress: 0, isPlaying: false });
+      if (track.audioUrl) {
+        audio.src = track.audioUrl;
+        audio.play().then(() => setState({ isPlaying: true })).catch(() => showNotif("No se pudo reproducir. Verifica el link ❌"));
+      } else {
+        showNotif("Este track no tiene audio adjunto 🎵");
+      }
+      updateDoc(doc(db, "tracks", track.id), { plays: increment(1) }).catch(()=>{});
+    }
+  }
+
+  // ── RENDER ──
+  function render() {
+    const root = document.getElementById("root");
+    if (state.authLoading) { root.innerHTML = '<div class="loading"><div class="spinner"></div></div>'; return; }
+    if (!state.user) { root.innerHTML = renderLogin(); bindLogin(); return; }
+    if (state.tracksLoading && state.tracks.length === 0) loadTracks();
+    root.innerHTML = renderApp();
+    bindApp();
+  }
+
+  // ── LOGIN ──
+  function renderLogin() {
+    return `
+    <div style="min-height:100vh;background:#050508;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
+      <div style="position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,200,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,200,0.03) 1px,transparent 1px);background-size:40px 40px;animation:grid-move 3s linear infinite"></div>
+      <div style="position:fixed;top:20%;left:10%;width:400px;height:400px;background:radial-gradient(circle,rgba(0,255,200,0.06) 0%,transparent 70%);border-radius:50%;animation:pulse-ring 4s ease-in-out infinite"></div>
+      <div style="position:fixed;bottom:20%;right:10%;width:300px;height:300px;background:radial-gradient(circle,rgba(0,128,255,0.08) 0%,transparent 70%);border-radius:50%;animation:pulse-ring 5s ease-in-out infinite"></div>
+      <div style="position:relative;z-index:1;width:100%;max-width:420px;padding:24px">
+        <div style="text-align:center;margin-bottom:36px;animation:float 3s ease-in-out infinite">
+          <div style="font-size:48px;margin-bottom:8px">◈</div>
+          <div style="font-family:'Orbitron',monospace;font-size:28px;font-weight:900;letter-spacing:6px;color:#00ffc8;text-shadow:0 0 30px rgba(0,255,200,0.6)">NEURØ</div>
+          <div style="font-family:'Orbitron',monospace;font-size:11px;letter-spacing:8px;color:rgba(255,255,255,0.4);margin-top:4px">AI MUSIC PLATFORM</div>
+        </div>
+        <div class="neon-border" style="padding:32px;background:rgba(5,5,8,0.9);backdrop-filter:blur(20px)">
+          <div style="display:flex;margin-bottom:24px;border-bottom:1px solid rgba(0,255,200,0.15)">
+            <button onclick="setLoginView('login')" style="flex:1;background:none;border:none;padding:10px 0;cursor:pointer;font-family:'Orbitron',monospace;font-size:11px;letter-spacing:2px;color:${state.loginView==='login'?'#00ffc8':'rgba(255,255,255,0.3)'};border-bottom:${state.loginView==='login'?'2px solid #00ffc8':'2px solid transparent'};transition:all 0.2s;text-transform:uppercase">INICIAR</button>
+            <button onclick="setLoginView('register')" style="flex:1;background:none;border:none;padding:10px 0;cursor:pointer;font-family:'Orbitron',monospace;font-size:11px;letter-spacing:2px;color:${state.loginView==='register'?'#00ffc8':'rgba(255,255,255,0.3)'};border-bottom:${state.loginView==='register'?'2px solid #00ffc8':'2px solid transparent'};transition:all 0.2s;text-transform:uppercase">REGISTRO</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            ${state.loginView==='register'?`<input class="input-neon" id="inp-name" placeholder="Nombre de artista" value="${state.loginName}" oninput="state.loginName=this.value" />`:''}
+            <input class="input-neon" id="inp-email" placeholder="Email" type="email" value="${state.loginEmail}" oninput="state.loginEmail=this.value" />
+            <input class="input-neon" id="inp-pass" placeholder="Contraseña" type="password" value="${state.loginPassword}" oninput="state.loginPassword=this.value" />
+            ${state.loginError?`<div class="error-msg">${state.loginError}</div>`:''}
+            <button class="btn-solid" onclick="${state.loginView==='login'?'loginEmail()':'registerEmail()'}" ${state.loginLoading?'disabled':''} style="margin-top:4px">
+              ${state.loginLoading?'CARGANDO...':(state.loginView==='login'?'CONECTAR':'CREAR CUENTA')}
+            </button>
+            <div style="text-align:center;font-size:11px;color:rgba(255,255,255,0.2);letter-spacing:2px">— O —</div>
+            <button class="btn-google" onclick="loginGoogle()">
+              <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              ENTRAR CON GOOGLE
+            </button>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:16px;font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(255,255,255,0.2);letter-spacing:2px">MÚSICA GENERADA POR INTELIGENCIA ARTIFICIAL</div>
+      </div>
+    </div>`;
+  }
+
+  function bindLogin() {
+    window.setLoginView = v => setState({ loginView: v, loginError: "" });
+    window.loginEmail = loginEmail;
+    window.registerEmail = registerEmail;
+    window.loginGoogle = loginGoogle;
+  }
+
+  // ── APP ──
+  function renderTrackCard(track, index) {
+    const playing = state.isPlaying && state.currentTrack?.id === track.id;
+    const liked = state.likedTracks.has(track.id);
+    const waveform = track.waveform || Array(30).fill(0.5);
+    return `
+    <div class="track-card track-item" style="padding:20px;animation-delay:${index*0.05}s">
+      <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:14px">
+        <div style="width:56px;height:56px;background:rgba(0,255,200,0.06);border:1px solid rgba(0,255,200,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;cursor:pointer" onclick="playTrack('${track.id}')">
+          ${playing?`<span style="font-size:20px;color:#00ffc8;animation:pulse-dot 0.8s ease infinite">◈</span>`:track.cover||'🎵'}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${track.title}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:6px">${track.artistName||'Artista'}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span style="font-size:10px;background:rgba(0,255,200,0.08);border:1px solid rgba(0,255,200,0.15);color:rgba(0,255,200,0.7);padding:2px 8px">${track.genre||''}</span>
+            <span style="font-size:10px;color:rgba(255,255,255,0.2);padding:2px 6px;border:1px solid rgba(255,255,255,0.06)">${track.aiModel||''}</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:1px;height:32px;margin-bottom:12px;cursor:pointer" onclick="playTrack('${track.id}')">
+        ${waveform.map(h=>`<div style="flex:1;height:${h*100}%;background:${playing?`rgba(0,255,200,${0.3+h*0.7})`:`rgba(255,255,255,${0.08+h*0.12})`};border-radius:1px;transition:background 0.3s"></div>`).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;gap:16px">
+          <span style="font-size:12px;color:rgba(255,255,255,0.3)">▶ ${fnum(track.plays)}</span>
+          <button onclick="likeTrack('${track.id}')" style="background:none;border:none;cursor:pointer;font-size:12px;color:${liked?'#ff4466':'rgba(255,255,255,0.3)'};transition:color 0.2s;font-family:monospace">
+            ♥ ${fnum(track.likes||0)}
+          </button>
+        </div>
+        <span style="font-size:11px;color:rgba(255,255,255,0.25)">${fmt(track.duration||0)}</span>
+      </div>
+    </div>`;
+  }
+
+  function renderApp() {
+    const filtered = state.tracks.filter(t => {
+      const mg = state.activeGenre==="All" || t.genre===state.activeGenre;
+      const ms = t.title?.toLowerCase().includes(state.searchQuery.toLowerCase()) || t.artistName?.toLowerCase().includes(state.searchQuery.toLowerCase());
+      return mg && ms;
+    });
+
+    return `
+    <di
