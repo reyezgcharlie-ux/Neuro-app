@@ -196,7 +196,7 @@ function TrackCard({ track, isOwn, player, setPlayer, liked, onLike, onEdit, onD
 
 // ── UPLOAD MODAL ──────────────────────────────────────────────────────────────
 function UploadModal({ onClose, onSuccess, user, profile }) {
-  const { upload, progress, uploading } = useUploadTrack();
+  const { upload, progress, uploading, error: uploadError } = useUploadTrack();
   const [step, setStep] = useState(1);
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
@@ -216,7 +216,9 @@ function UploadModal({ onClose, onSuccess, user, profile }) {
     try {
       await upload({ audioFile, coverFile, ...form, user, profile });
       onSuccess();
-    } catch (e) { alert("Upload failed: " + e.message); }
+    } catch (e) {
+      // error displayed via uploadError below
+    }
   };
 
   return (
@@ -248,7 +250,7 @@ function UploadModal({ onClose, onSuccess, user, profile }) {
               borderRadius: 12, transition: "all .2s",
             }}>
               <div style={{ width: 48, height: 48, borderRadius: 10, background: "rgba(0,255,200,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                🎵
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00ffc8" strokeWidth="1.6" strokeLinecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: audioFile ? "#00ffc8" : "rgba(255,255,255,0.8)", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -272,7 +274,7 @@ function UploadModal({ onClose, onSuccess, user, profile }) {
             }}>
               <div style={{ width: 48, height: 48, borderRadius: 10, overflow: "hidden", flexShrink: 0,
                 background: "rgba(0,255,200,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {coverPreview ? <img src={coverPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}/> : <span>🖼️</span>}
+                {coverPreview ? <img src={coverPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}/> : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00ffc8" strokeWidth="1.6" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: coverFile ? "#00ffc8" : "rgba(255,255,255,0.8)", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -305,12 +307,17 @@ function UploadModal({ onClose, onSuccess, user, profile }) {
             </select>
           </Field>
           <Field label="TAGS"><input className="inp" style={inp} placeholder="dark, electronic, chill..." value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}/></Field>
-          {uploading && (
+          {(uploading || progress > 0) && !uploadError && (
             <div style={{ background: "rgba(0,255,200,0.04)", border: "1px solid rgba(0,255,200,0.2)", borderRadius: 8, padding: "12px 16px" }}>
               <div style={{ fontSize: 12, color: "rgba(0,255,200,0.7)", marginBottom: 8 }}>Uploading... {progress}%</div>
               <div style={{ height: 3, background: "rgba(255,255,255,0.08)", borderRadius: 2 }}>
                 <div style={{ height: "100%", width: `${progress}%`, background: "#00ffc8", borderRadius: 2, transition: "width .3s" }}/>
               </div>
+            </div>
+          )}
+          {uploadError && (
+            <div style={{ background: "rgba(255,68,102,0.08)", border: "1px solid rgba(255,68,102,0.3)", borderRadius: 8, padding: "12px 16px", fontSize: 12, color: "#ff4466" }}>
+              ⚠ {uploadError.includes("storage/unauthorized") ? "Storage permission denied — check Firebase Storage rules." : uploadError}
             </div>
           )}
           <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
@@ -402,12 +409,13 @@ function EditModal({ track, onClose, onSuccess, userId }) {
 
 // ── AUTH SCREEN ───────────────────────────────────────────────────────────────
 function AuthScreen({ onAuth }) {
-  const { register, login } = useAuth();
+  const { register, login, loginWithGoogle } = useAuth();
   const [tab, setTab] = useState("login");
   const [form, setForm] = useState({ email: "", password: "", name: "" });
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleAvatar = (f) => {
@@ -416,6 +424,18 @@ function AuthScreen({ onAuth }) {
     const r = new FileReader();
     r.onload = (e) => setAvatarPreview(e.target.result);
     r.readAsDataURL(f);
+  };
+
+  const handleGoogleLogin = async () => {
+    setError(""); setGoogleLoading(true);
+    try {
+      await loginWithGoogle();
+      onAuth();
+    } catch (e) {
+      setError(e.message.replace("Firebase: ", ""));
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -465,7 +485,7 @@ function AuthScreen({ onAuth }) {
                 <div style={{ width: 44, height: 44, borderRadius: "50%", overflow: "hidden",
                   border: "1.5px solid rgba(0,255,200,0.3)", flexShrink: 0, background: "rgba(0,255,200,0.08)",
                   display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {avatarPreview ? <img src={avatarPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}/> : <span style={{ fontSize: 20 }}>👤</span>}
+                  {avatarPreview ? <img src={avatarPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}/> : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00ffc8" strokeWidth="1.6" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
                 </div>
                 <div>
                   <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)" }}>{avatarFile ? avatarFile.name : "Profile photo (optional)"}</div>
@@ -476,6 +496,16 @@ function AuthScreen({ onAuth }) {
               <input style={inp} placeholder="Artist name *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}/>
             </>
           )}
+          {/* Google Sign In */}
+          <button onClick={handleGoogleLogin} disabled={googleLoading} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", padding: "12px 0", background: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "'Orbitron',monospace", fontSize: 10, fontWeight: 700, letterSpacing: 2, color: "#1a1a2e", transition: "all .2s", opacity: googleLoading ? 0.7 : 1 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            {googleLoading ? "LOADING..." : "CONTINUE WITH GOOGLE"}
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0" }}>
+            <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }}/>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.18)", letterSpacing: 2 }}>OR</span>
+            <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }}/>
+          </div>
           <input style={inp} placeholder="Email *" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}/>
           <input style={inp} placeholder="Password *" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === "Enter" && handleSubmit()}/>
           {error && <div style={{ fontSize: 12, color: "#ff4466", padding: "8px 12px", background: "rgba(255,68,102,0.08)", borderRadius: 6, border: "1px solid rgba(255,68,102,0.2)" }}>{error}</div>}
@@ -554,8 +584,10 @@ function Player({ player, setPlayer }) {
 // ── FOOTER ────────────────────────────────────────────────────────────────────
 function Footer() {
   const socials = [
-    { name: "Instagram", icon: "📸" }, { name: "TikTok", icon: "🎵" },
-    { name: "X / Twitter", icon: "✖" }, { name: "YouTube", icon: "▶" },
+    { name: "Instagram", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".8" fill="currentColor" stroke="none"/></svg> },
+    { name: "TikTok", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.34 6.34 0 0 0-6.13 6.33 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.76a4.85 4.85 0 0 1-1.01-.07z"/></svg> },
+    { name: "X / Twitter", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.835L2.18 2.25h6.952l4.256 5.628L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg> },
+    { name: "YouTube", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg> },
   ];
   return (
     <footer style={{ borderTop: "1px solid rgba(255,255,255,0.07)", padding: "48px 24px 32px",
@@ -656,9 +688,15 @@ export default function App() {
     showToast(following.has(id) ? "Unfollowed" : "Now following!");
   };
 
+  // Show loading max 8s — after that show auth screen regardless
   if (loading) return (
-    <div style={{ minHeight: "100vh", background: "#05060c", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ fontFamily: "'Orbitron',monospace", color: "#00ffc8", letterSpacing: 4, fontSize: 14, opacity: 0.7 }}>LOADING...</div>
+    <div style={{ minHeight: "100vh", background: "#05060c", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+      <Logo size={52}/>
+      <div style={{ fontFamily: "'Orbitron',monospace", color: "#00ffc8", letterSpacing: 4, fontSize: 13, opacity: 0.7 }}>LOADING...</div>
+      <div style={{ width: 140, height: 2, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ height: "100%", background: "#00ffc8", borderRadius: 2, animation: "loadBar 1.4s ease-in-out infinite" }}/>
+      </div>
+      <style>{`@keyframes loadBar { 0%{width:0%;margin-left:0} 50%{width:60%;margin-left:20%} 100%{width:0%;margin-left:100%} }`}</style>
     </div>
   );
 
