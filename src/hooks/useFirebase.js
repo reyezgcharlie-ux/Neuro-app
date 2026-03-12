@@ -17,15 +17,31 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Fallback: if Firebase never responds, stop loading after 8s
+    const timeout = setTimeout(() => setLoading(false), 8000);
+
     const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        const snap = await getDoc(doc(db, "users", u.uid));
-        if (snap.exists()) setProfile({ id: snap.id, ...snap.data() });
-      } else setProfile(null);
+      clearTimeout(timeout);
+      try {
+        setUser(u);
+        if (u) {
+          const snap = await getDoc(doc(db, "users", u.uid));
+          if (snap.exists()) setProfile({ id: snap.id, ...snap.data() });
+        } else {
+          setProfile(null);
+        }
+      } catch (e) {
+        console.error("Auth profile error:", e);
+      } finally {
+        setLoading(false);
+      }
+    }, (err) => {
+      console.error("Auth state error:", err);
+      clearTimeout(timeout);
       setLoading(false);
     });
-    return unsub;
+
+    return () => { unsub(); clearTimeout(timeout); };
   }, []);
 
   const register = async (email, password, artistName, avatarFile) => {
@@ -91,27 +107,43 @@ export function useArtistTracks(artistId) {
 export function useUploadTrack() {
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
 
   const upload = useCallback(async ({ audioFile, coverFile, title, genre, aiTool, tags, user, profile }) => {
-    setUploading(true); setProgress(0);
+    setUploading(true); setProgress(0); setError("");
     try {
       const uid = user.uid;
       const ts = Date.now();
-      const audioRef = ref(storage, `tracks/${uid}/${ts}_${audioFile.name}`);
+      // Sanitize filename — removes spaces and special chars that break Storage
+      const sanitize = (name) => name.replace(/[^a-zA-Z0-9._-]/g, "_");
+
+      // Upload audio
+      const audioRef = ref(storage, `tracks/${uid}/${ts}_${sanitize(audioFile.name)}`);
+      const audioTask = uploadBytesResumable(audioRef, audioFile);
       await new Promise((res, rej) => {
-        const task = uploadBytesResumable(audioRef, audioFile);
-        task.on("state_changed",
-          (s) => setProgress(Math.round((s.bytesTransferred / s.totalBytes) * 75)),
-          rej, res);
+        audioTask.on("state_changed",
+          (s) => {
+            const pct = Math.round((s.bytesTransferred / s.totalBytes) * 75);
+            setProgress(pct);
+          },
+          (err) => { setError(err.message); rej(err); },
+          res
+        );
       });
       const audioUrl = await getDownloadURL(audioRef);
+
+      // Upload cover
       let coverUrl = "";
       if (coverFile) {
         setProgress(80);
-        const covRef = ref(storage, `covers/${uid}/${ts}_${coverFile.name}`);
-        await uploadBytesResumable(covRef, coverFile);
+        const covRef = ref(storage, `covers/${uid}/${ts}_${sanitize(coverFile.name)}`);
+        const covTask = uploadBytesResumable(covRef, coverFile);
+        await new Promise((res, rej) => {
+          covTask.on("state_changed", null, rej, res);
+        });
         coverUrl = await getDownloadURL(covRef);
       }
+
       setProgress(92);
       const trackRef = doc(collection(db, "tracks"));
       await setDoc(trackRef, {
@@ -121,13 +153,19 @@ export function useUploadTrack() {
         artistAvatar: profile?.avatarUrl || "",
         plays: 0, likes: 0, createdAt: serverTimestamp(),
       });
-      await updateDoc(doc(db, "users", uid), { tracksCount: increment(1) });
+      // Use setDoc with merge so it works even if user doc doesn't exist yet
+      await setDoc(doc(db, "users", uid), { tracksCount: increment(1) }, { merge: true });
       setProgress(100);
       return trackRef.id;
-    } finally { setUploading(false); }
+    } catch (err) {
+      setError(err.message || "Upload failed");
+      throw err;
+    } finally {
+      setUploading(false);
+    }
   }, []);
 
-  return { upload, progress, uploading };
+  return { upload, progress, uploading, error };
 }
 
 // ── EDIT TRACK ────────────────────────────────────────────────────────────────
@@ -195,12 +233,12 @@ export function useFollows(userId) {
     const meRef = doc(db, "users", userId);
     if (following.has(artistId)) {
       await deleteDoc(followRef);
-      await updateDoc(artistRef, { followers: increment(-1) });
-      await updateDoc(meRef, { following: increment(-1) });
+      await setDoc(artistRef, { followers: increment(-1) }, { merge: true });
+      await setDoc(meRef, { following: increment(-1) }, { merge: true });
     } else {
       await setDoc(followRef, { followerId: userId, followingId: artistId, createdAt: serverTimestamp() });
-      await updateDoc(artistRef, { followers: increment(1) });
-      await updateDoc(meRef, { following: increment(1) });
+      await setDoc(artistRef, { followers: increment(1) }, { merge: true });
+      await setDoc(meRef, { following: increment(1) }, { merge: true });
     }
   };
   return { following, toggleFollow };
