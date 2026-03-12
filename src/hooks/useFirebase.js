@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut, onAuthStateChanged, updateProfile,
+  GoogleAuthProvider, signInWithPopup,
 } from "firebase/auth";
 import {
   collection, doc, getDoc, setDoc, deleteDoc, onSnapshot,
@@ -65,13 +66,36 @@ export function useAuth() {
   const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
   const logout = () => signOut(auth);
 
+  const loginWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    const cred = await signInWithPopup(auth, provider);
+    const u = cred.user;
+    // Create user doc if first time
+    const snap = await getDoc(doc(db, "users", u.uid));
+    if (!snap.exists()) {
+      const data = {
+        uid: u.uid,
+        name: u.displayName || "Artist",
+        email: u.email,
+        avatarUrl: u.photoURL || "",
+        followers: 0, following: 0, tracksCount: 0,
+        createdAt: serverTimestamp(),
+      };
+      await setDoc(doc(db, "users", u.uid), data);
+      setProfile({ id: u.uid, ...data });
+    } else {
+      setProfile({ id: snap.id, ...snap.data() });
+    }
+    return u;
+  };
+
   const refreshProfile = async () => {
     if (!auth.currentUser) return;
     const snap = await getDoc(doc(db, "users", auth.currentUser.uid));
     if (snap.exists()) setProfile({ id: snap.id, ...snap.data() });
   };
 
-  return { user, profile, loading, register, login, logout, refreshProfile };
+  return { user, profile, loading, register, login, logout, loginWithGoogle, refreshProfile };
 }
 
 // ── TRACKS ────────────────────────────────────────────────────────────────────
